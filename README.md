@@ -2,7 +2,7 @@
 
 Detects the sim racing games installed on your PC and **launches the companion apps you choose the moment a game starts** (SimHub, CrewChief, Garage 61, Trading Paints, Track Titan…), then closes them when the game stops.
 
-Native Windows 11 app written in **Rust** with **WinUI 3** ([`windows-reactor`](https://github.com/microsoft/windows-rs/pull/4479)), Mica backdrop, light on resources (about 3.6 MB, no framework to ship).
+Native Windows 11 app written in **Rust** with **WinUI 3** ([`windows-reactor`](https://github.com/microsoft/windows-rs/pull/4479)), Mica backdrop. **Self-contained**: the Windows App SDK runtime ships next to the executable, so there is nothing to install.
 
 > 🇫🇷 [Version française](README.fr.md)
 
@@ -42,7 +42,7 @@ Settings and caches live in `%LOCALAPPDATA%\SimAutoStart` (`config.json`, `icons
 ## Requirements
 
 - Windows 10 1809 or later (Windows 11 recommended: Mica backdrop)
-- [Windows App SDK runtime 2.x](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads) (already installed with many recent apps)
+- Nothing else: the release zip (about 21 MB, 57 MB unzipped) contains the Windows App SDK runtime. Keep the files together, in the folder you unzipped.
 
 ## Build
 
@@ -54,7 +54,7 @@ cd SimAutoStart
 cargo run --release
 ```
 
-The executable is `target\release\simautostart.exe`. Run `cargo test` for the registry round-trip test of *Start with Windows* (it writes to `HKCU\...\Run` and restores the previous state).
+The first build downloads the Windows App SDK runtime from NuGet (about 165 MB, then kept in `%LOCALAPPDATA%\windows-reactor-setup`, roughly 800 MB once unpacked) and copies it next to the executable, so `target\release` is a self-contained folder. You need an internet connection for that first build. The executable is `target\release\simautostart.exe`; to share the app, ship it together with the runtime files that sit next to it (see the release zip). Run `cargo test` for the registry round-trip test of *Start with Windows* (it writes to `HKCU\...\Run` and restores the previous state).
 
 ## Project layout
 

@@ -14,3 +14,4 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 
 [build-dependencies]
 embed-resource = "3.0.12"
+windows-reactor-setup = "0.100"

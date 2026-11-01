@@ -2,7 +2,7 @@
 
 Détecte les jeux de simracing installés sur ton PC et **lance les applications compagnons que tu choisis dès qu'un jeu démarre** (SimHub, CrewChief, Garage 61, Trading Paints, Track Titan…), puis les ferme quand le jeu s'arrête.
 
-Application Windows 11 native écrite en **Rust** avec **WinUI 3** ([`windows-reactor`](https://github.com/microsoft/windows-rs/pull/4479)), fond Mica, légère (environ 3,6 Mo, aucun framework à embarquer).
+Application Windows 11 native écrite en **Rust** avec **WinUI 3** ([`windows-reactor`](https://github.com/microsoft/windows-rs/pull/4479)), fond Mica. **Autonome** : le runtime Windows App SDK est livré à côté de l'exécutable, il n'y a rien à installer.
 
 > 🇬🇧 [English version](README.md)
 
@@ -43,7 +43,7 @@ Les réglages et caches sont dans `%LOCALAPPDATA%\SimAutoStart` (`config.json`, 
 ## Prérequis
 
 - Windows 10 1809 ou plus récent (Windows 11 recommandé : fond Mica)
-- [Runtime Windows App SDK 2.x](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads) (déjà présent avec beaucoup d'applications récentes)
+- Rien d'autre : le zip de la release (environ 21 Mo, 57 Mo décompressé) contient le runtime Windows App SDK. Garde les fichiers ensemble, dans le dossier où tu as décompressé.
 
 ## Compiler
 
@@ -55,7 +55,7 @@ cd SimAutoStart
 cargo run --release
 ```
 
-L'exécutable est `target\release\simautostart.exe`. `cargo test` lance le test d'aller-retour du registre pour *Démarrer avec Windows* (il écrit dans `HKCU\...\Run` puis remet l'état précédent).
+Le premier build télécharge le runtime Windows App SDK depuis NuGet (environ 165 Mo, puis gardé dans `%LOCALAPPDATA%\windows-reactor-setup`, environ 800 Mo une fois décompressé) et le copie à côté de l'exécutable : `target\release` devient un dossier autonome. Une connexion internet est nécessaire pour ce premier build. L'exécutable est `target\release\simautostart.exe` ; pour partager l'appli, livre-le avec les fichiers du runtime qui sont à côté (voir le zip de la release). `cargo test` lance le test d'aller-retour du registre pour *Démarrer avec Windows* (il écrit dans `HKCU\...\Run` puis remet l'état précédent).
 
 ## Limites connues
 
