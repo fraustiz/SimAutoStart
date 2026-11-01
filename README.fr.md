@@ -70,4 +70,4 @@ L'exécutable est `target\release\simautostart.exe`. `cargo test` lance le test 
 
 ## Licence
 
-Aucune licence choisie pour l'instant : tous droits réservés à l'auteur tant qu'aucune n'est ajoutée.
+[MIT](LICENSE) © 2026 Fraustiz.

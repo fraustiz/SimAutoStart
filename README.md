@@ -84,4 +84,4 @@ The executable is `target\release\simautostart.exe`. Run `cargo test` for the re
 
 ## License
 
-No license has been chosen yet: all rights reserved by the author until one is added.
+[MIT](LICENSE) © 2026 Fraustiz.
