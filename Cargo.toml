@@ -1,6 +1,6 @@
 [package]
 name = "simautostart"
-version = "0.1.0"
+version = "0.1.0-beta.3"
 edition = "2021"
 description = "Detects sim racing games and launches the companion apps you choose when a game starts"
 license = "MIT"
@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
 sysinfo = "0.40.1"
 windows-reactor = "0.100"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

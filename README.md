@@ -19,6 +19,7 @@ Native Windows 11 app written in **Rust** with **WinUI 3** ([`windows-reactor`](
 - **Add your own** games and apps from an `.exe` (page *Additions*, or *Add an app* on any game page).
 - **System tray**: closing the window hides it in the notification area (menu: Open / Quit), and only one instance ever runs.
 - **Start with Windows** (starts hidden in the tray).
+- **Built-in updates**: checks the GitHub releases (once a day, and you can turn it off), downloads the new zip, verifies its SHA-256, replaces the app's files and restarts.
 - **Bottom bar** showing which game is running.
 - English by default, **French automatically** when Windows is displayed in French.
 - Imports program paths from [ToLaunch](https://github.com/tolgayilmaz86/ToLaunch) profiles (`%LOCALAPPDATA%\ToLaunch`).
@@ -37,7 +38,7 @@ Native Windows 11 app written in **Rust** with **WinUI 3** ([`windows-reactor`](
 2. When a game appears, the apps you switched on for it are started (if they aren't already running). When it disappears, the ones SimAutoStart started are closed (if you enabled that).
 3. Paths are **learned**: from running processes, from your ToLaunch profiles, and from *Locate…*. The catalog only holds default locations.
 
-Settings and caches live in `%LOCALAPPDATA%\SimAutoStart` (`config.json`, `icons\`, `software.txt`). Nothing is sent anywhere.
+Settings and caches live in `%LOCALAPPDATA%\SimAutoStart` (`config.json`, `icons\`, `software.txt`). The only network request the app makes is the update check (one `GET` to the GitHub API, no identifier, no telemetry), which you can turn off in Settings.
 
 ## Requirements
 
@@ -66,6 +67,7 @@ The first build downloads the Windows App SDK runtime from NuGet (about 165 MB, 
 | `src/engine.rs` | Monitoring thread: launches and closes apps |
 | `src/tray.rs` | Notification-area icon, close-to-tray, single instance (raw Win32) |
 | `src/autostart.rs` | *Start with Windows* (registry `Run` key) |
+| `src/updater.rs` | Update check, download + SHA-256 check, file replacement helper (`--apply-update`) |
 | `src/icons.rs` | Game logo extraction and cache |
 | `src/custom.rs` | Custom games/apps and the file picker |
 | `src/config.rs`, `src/i18n.rs` | Persisted settings; English/French |
@@ -73,6 +75,8 @@ The first build downloads the Windows App SDK runtime from NuGet (about 165 MB, 
 
 ## Known limitations
 
+- **Updates are not signed.** The executable is unsigned, and the SHA-256 comes from the same GitHub release as the zip: it protects against a corrupted download, not against a compromised GitHub account. Downloads are limited to this repository's release files, over HTTPS. Updating relies on `curl.exe` and `tar.exe`, which ship with Windows 10 (1803 and later) and Windows 11.
+- The app refuses to update a development build (one running from `target\debug` or `target\release`).
 - `windows-reactor` is a preview crate (0.100). The tray icon, close interception and file picker are implemented with plain Win32 and PowerShell because the crate doesn't offer them yet.
 - A game has to be detectable: Steam, the Windows installed-programs list, a default path, or added by hand.
 - The first launch reads the installed-programs list and extracts logos (about a second); both are cached afterwards.

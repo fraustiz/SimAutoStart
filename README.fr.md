@@ -21,6 +21,7 @@ L'interface s'affiche en français quand Windows est en français (en anglais si
 - **Ajoute tes propres jeux et applis** depuis un `.exe` (page *Ajouts*, ou *Ajouter une application* sur la page d'un jeu).
 - **Zone de notification** : fermer la fenêtre la cache (menu Ouvrir / Quitter), et une seule instance tourne à la fois.
 - **Démarrage avec Windows** (démarre caché dans la zone de notification).
+- **Mises à jour intégrées** : vérifie les releases GitHub (une fois par jour, désactivable), télécharge le nouveau zip, vérifie son SHA-256, remplace les fichiers de l'appli et redémarre.
 - **Barre du bas** indiquant le jeu en cours.
 - Importe les chemins de tes profils [ToLaunch](https://github.com/tolgayilmaz86/ToLaunch) (`%LOCALAPPDATA%\ToLaunch`).
 
@@ -38,7 +39,7 @@ L'interface s'affiche en français quand Windows est en français (en anglais si
 2. Quand un jeu apparaît, les applis activées pour lui sont lancées (si elles ne tournent pas déjà). Quand il disparaît, celles que SimAutoStart a lancées sont fermées (si l'option est active).
 3. Les chemins sont **appris** : depuis les processus en cours, depuis tes profils ToLaunch et depuis *Localiser…*. Le catalogue ne contient que des emplacements par défaut.
 
-Les réglages et caches sont dans `%LOCALAPPDATA%\SimAutoStart` (`config.json`, `icons\`, `software.txt`). Rien n'est envoyé nulle part.
+Les réglages et caches sont dans `%LOCALAPPDATA%\SimAutoStart` (`config.json`, `icons\`, `software.txt`). La seule requête réseau de l'appli est la vérification des mises à jour (un `GET` vers l'API GitHub, sans identifiant ni télémétrie), désactivable dans les réglages.
 
 ## Prérequis
 
@@ -59,6 +60,8 @@ Le premier build télécharge le runtime Windows App SDK depuis NuGet (environ 1
 
 ## Limites connues
 
+- **Les mises à jour ne sont pas signées.** L'exécutable n'est pas signé, et le SHA-256 vient de la même release GitHub que le zip : il protège d'un téléchargement corrompu, pas d'un compte GitHub compromis. Les téléchargements sont limités aux fichiers de release de ce dépôt, en HTTPS. La mise à jour s'appuie sur `curl.exe` et `tar.exe`, fournis avec Windows 10 (1803 et plus) et Windows 11.
+- L'appli refuse de mettre à jour un build de développement (lancé depuis `target\debug` ou `target\release`).
 - `windows-reactor` est une préversion (0.100). L'icône de notification, l'interception de la fermeture et le sélecteur de fichier passent par du Win32 et PowerShell, faute de mieux dans le crate.
 - Un jeu doit être détectable : Steam, liste des applications installées, chemin par défaut, ou ajouté à la main.
 - Le premier lancement lit la liste des applications installées et extrait les logos (environ une seconde) ; tout est ensuite mis en cache.

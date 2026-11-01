@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+﻿#![windows_subsystem = "windows"]
 
 mod autostart;
 mod catalog;
@@ -9,6 +9,7 @@ mod engine;
 mod i18n;
 mod icons;
 mod tray;
+mod updater;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -33,6 +34,10 @@ struct SimAutoStart {
     picker: Option<ComponentTask>,
     /// Sidebar dépliée (libellés) ou repliée (logos seuls).
     pane_open: bool,
+    /// État de la mise à jour (partagé avec les threads de vérification et de téléchargement).
+    updates: updater::Shared,
+    /// Build de développement (`target\\debug|release`) : on n'installe pas de mise à jour par-dessus.
+    dev_build: bool,
 }
 
 /// Ce que l'utilisateur est en train d'ajouter avec le sélecteur de fichier.
@@ -60,6 +65,10 @@ enum Message {
     CloseToTray(bool),
     StopOnExit(bool),
     ImportToLaunch,
+    CheckUpdates,
+    InstallUpdate,
+    ApplyUpdate,
+    AutoCheckUpdates(bool),
 }
 
 fn keyed(views: Vec<View>) -> Vec<KeyedView> {
@@ -280,7 +289,22 @@ impl SimAutoStart {
                     .any(|sim| shared.config.is_linked(sim.id, id))
             })
             .count();
-        let right = if !shared.config.auto_launch {
+        let update_note = match &*self.updates.lock().unwrap() {
+            updater::Status::Available(update) => Some(if is_fr() {
+                format!("Mise à jour disponible : {}", update.tag)
+            } else {
+                format!("Update available: {}", update.tag)
+            }),
+            updater::Status::Ready { tag, .. } => Some(if is_fr() {
+                format!("{tag} prête à installer")
+            } else {
+                format!("{tag} ready to install")
+            }),
+            _ => None,
+        };
+        let right = if let Some(note) = update_note {
+            note
+        } else if !shared.config.auto_launch {
             t("Auto-launch is off", "Lancement automatique désactivé").to_string()
         } else if running.is_empty() {
             t("Monitoring", "Surveillance active").to_string()
@@ -579,6 +603,97 @@ impl SimAutoStart {
             ),
         ]);
 
+        // --- Mises à jour ------------------------------------------------------------------
+        let status = self.updates.lock().unwrap().clone();
+        let version = updater::current_version();
+        let (summary, action): (String, Option<(&str, Message, bool)>) = if self.dev_build {
+            (
+                t(
+                    "Development build: updates are disabled",
+                    "Version de développement : mises à jour désactivées",
+                )
+                .to_string(),
+                None,
+            )
+        } else {
+            match &status {
+                updater::Status::Idle => (
+                    t("Not checked yet", "Pas encore vérifié").to_string(),
+                    Some((t("Check now", "Vérifier"), Message::CheckUpdates, true)),
+                ),
+                updater::Status::Checking => (
+                    t("Checking…", "Vérification…").to_string(),
+                    Some((t("Check now", "Vérifier"), Message::CheckUpdates, false)),
+                ),
+                updater::Status::UpToDate => (
+                    t("You have the latest version", "Tu as la dernière version").to_string(),
+                    Some((t("Check now", "Vérifier"), Message::CheckUpdates, true)),
+                ),
+                updater::Status::Available(update) => (
+                    if is_fr() {
+                        format!("{} est disponible", update.version)
+                    } else {
+                        format!("{} is available", update.version)
+                    },
+                    Some((t("Download and install", "Télécharger et installer"), Message::InstallUpdate, true)),
+                ),
+                updater::Status::Downloading { done, total } => {
+                    let percent = if *total > 0 { (done * 100 / total).min(100) } else { 0 };
+                    (
+                        if is_fr() {
+                            format!("Téléchargement et vérification… {percent} %")
+                        } else {
+                            format!("Downloading and verifying… {percent}%")
+                        },
+                        Some((t("Installing…", "Installation…"), Message::CheckUpdates, false)),
+                    )
+                }
+                updater::Status::Ready { tag, .. } => (
+                    if is_fr() {
+                        format!("{tag} est prête : SimAutoStart va redémarrer")
+                    } else {
+                        format!("{tag} is ready: SimAutoStart will restart")
+                    },
+                    Some((t("Restart and update", "Redémarrer et mettre à jour"), Message::ApplyUpdate, true)),
+                ),
+                updater::Status::Error(error) => (
+                    if is_fr() {
+                        format!("Échec de la mise à jour : {error}")
+                    } else {
+                        format!("Update failed: {error}")
+                    },
+                    Some((t("Try again", "Réessayer"), Message::CheckUpdates, true)),
+                ),
+            }
+        };
+        let update_control: View = match action {
+            Some((label, message, enabled)) => Button::new()
+                .on_click(context.message(message))
+                .is_enabled(enabled)
+                .content(label)
+                .into(),
+            None => TextBlock::new().text("").into(),
+        };
+        let updates_card = card_of_rows(vec![
+            row(
+                t("Updates", "Mises à jour"),
+                format!("{} {version} · {summary}", t("Version", "Version")),
+                update_control,
+            ),
+            row(
+                t("Check automatically", "Vérifier automatiquement"),
+                t(
+                    "Asks GitHub for the latest release once a day. Nothing else is sent.",
+                    "Interroge GitHub une fois par jour pour la dernière version. Rien d'autre n'est envoyé.",
+                )
+                .to_string(),
+                ToggleSwitch::new()
+                    .is_on(shared.config.check_updates)
+                    .is_enabled(!self.dev_build)
+                    .on_toggled(context.callback(Message::AutoCheckUpdates)),
+            ),
+        ]);
+
         let mut events: Vec<View> = shared
             .log
             .iter()
@@ -610,6 +725,8 @@ impl SimAutoStart {
                             t("How monitoring behaves", "Comportement de la surveillance").into(),
                         ),
                         options.into(),
+                        section_title(t("Updates", "Mises à jour")),
+                        updates_card,
                         section_title(t("Recent activity", "Activité récente")),
                         activity.into(),
                     ])),
@@ -636,6 +753,30 @@ impl Component for SimAutoStart {
             }
         }
         engine::spawn(state.clone());
+        // Mises à jour : vérification automatique au plus une fois par jour (désactivable).
+        let updates = updater::new_status();
+        let dev_build = updater::is_dev_build();
+        // Test uniquement (build de débogage) : présente un dossier local comme « mise à jour
+        // prête », pour essayer « Redémarrer et mettre à jour » sans publier de release.
+        #[cfg(debug_assertions)]
+        if let Some(dir) = std::env::var_os("SIMAUTOSTART_TEST_STAGED") {
+            *updates.lock().unwrap() =
+                updater::Status::Ready { dir: PathBuf::from(dir), tag: "v-test".to_string() };
+        }
+        let check_due = {
+            let shared = state.lock().unwrap();
+            shared.config.check_updates
+                && !dev_build
+                && updater::now_secs().saturating_sub(shared.config.last_update_check) > 24 * 3600
+        };
+        if check_due {
+            updater::spawn_check(updates.clone(), state.clone());
+        }
+        // Dossier de mise à jour d'une installation précédente (on laisse 10 s au processus d'aide).
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(10));
+            updater::cleanup_staging();
+        });
         let libraries = detect::steam_libraries();
         detect::warm_up_software();
         icons::spawn(state.clone(), libraries.clone());
@@ -649,6 +790,8 @@ impl Component for SimAutoStart {
             timer: None,
             picker: None,
             pane_open: true,
+            updates,
+            dev_build,
         };
         app.rescan();
         app.selected = app
@@ -669,6 +812,34 @@ impl Component for SimAutoStart {
                     self.merge_running();
                 }
                 self.timer = Some(tick_after(context));
+            }
+            Message::CheckUpdates => {
+                if !self.dev_build {
+                    updater::spawn_check(self.updates.clone(), self.state.clone());
+                }
+            }
+            Message::InstallUpdate => {
+                let status = self.updates.lock().unwrap().clone();
+                if let updater::Status::Available(update) = status {
+                    if !self.dev_build {
+                        updater::spawn_install(self.updates.clone(), update);
+                    }
+                }
+            }
+            Message::ApplyUpdate => {
+                let status = self.updates.lock().unwrap().clone();
+                if let (updater::Status::Ready { dir, .. }, false) = (status, self.dev_build) {
+                    match updater::start_apply(&dir) {
+                        // L'aide attend la fermeture de cette appli, puis remplace les fichiers.
+                        Ok(()) => tray::shutdown(),
+                        Err(error) => *self.updates.lock().unwrap() = updater::Status::Error(error),
+                    }
+                }
+            }
+            Message::AutoCheckUpdates(on) => {
+                let mut shared = self.state.lock().unwrap();
+                shared.config.check_updates = on;
+                shared.config.save();
             }
             Message::AddExe(kind) => {
                 let title = match kind {
@@ -863,6 +1034,10 @@ impl Component for SimAutoStart {
 }
 
 fn main() {
+    // Mode « aide » d'une mise à jour : copie les fichiers puis relance l'appli, sans fenêtre.
+    if updater::handle_apply_mode() {
+        return;
+    }
     // Une seule instance : si l'appli tourne déjà (cachée dans la zone de notification),
     // on la réaffiche et on quitte.
     if !tray::ensure_single_instance() {

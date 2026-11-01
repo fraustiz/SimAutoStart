@@ -35,6 +35,16 @@ pub fn set_close_to_tray(on: bool) {
     CLOSE_TO_TRAY.store(on, Ordering::Relaxed);
 }
 
+/// Retire l'icône de la zone de notification puis quitte (sinon une icône fantôme reste jusqu'au
+/// prochain survol). Utilisé avant de laisser une mise à jour remplacer les fichiers.
+pub fn shutdown() -> ! {
+    let hwnd = TRAY_HWND.load(Ordering::Relaxed) as HWND;
+    if !hwnd.is_null() {
+        remove_icon(hwnd);
+    }
+    std::process::exit(0)
+}
+
 /// Affiche (et met au premier plan) la fenêtre principale, cachée ou réduite.
 pub fn show_main_window() {
     let hwnd = MAIN_HWND.load(Ordering::Relaxed) as HWND;

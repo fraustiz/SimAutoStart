@@ -24,6 +24,12 @@ pub struct Config {
     /// Fermer la fenêtre la cache dans la zone de notification au lieu de quitter.
     #[serde(default = "yes")]
     pub close_to_tray: bool,
+    /// Vérifier une fois par jour s'il existe une version plus récente (une requête GET à GitHub).
+    #[serde(default = "yes")]
+    pub check_updates: bool,
+    /// Heure (secondes Unix) de la dernière vérification de mise à jour.
+    #[serde(default)]
+    pub last_update_check: u64,
     /// Simulateurs ajoutés par l'utilisateur (hors catalogue).
     #[serde(default)]
     pub custom_sims: Vec<CustomEntry>,
@@ -61,6 +67,7 @@ impl Config {
         if !path().exists() {
             config.auto_launch = true;
             config.close_to_tray = true;
+            config.check_updates = true;
         }
         config
     }
