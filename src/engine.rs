@@ -4,6 +4,7 @@ use crate::catalog;
 use crate::i18n::is_fr;
 use crate::config::Config;
 use crate::detect::{self, Snapshot};
+use crate::winproc;
 use std::collections::BTreeSet;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -49,30 +50,33 @@ pub fn spawn(state: State) {
     });
 }
 
-/// Demande une fermeture propre (WM_CLOSE), attend jusqu'à 5 s, puis force l'arrêt.
-/// Fait dans un thread pour ne pas bloquer la surveillance. Les logiciels sans fenêtre
-/// (zone de notification) ignorent la demande propre : l'arrêt forcé est alors nécessaire.
+/// Demande une fermeture propre (`WM_CLOSE` aux fenêtres), attend jusqu'à 5 s, puis force
+/// l'arrêt. Sans aucune fenêtre (agent Garage 61, appli de zone de notification sans fenêtre),
+/// la demande propre est impossible : arrêt forcé tout de suite. Tout passe par l'API Windows
+/// (`winproc`) : aucun outil en ligne de commande, donc aucune fenêtre de console.
+/// Fait dans un thread pour ne pas bloquer la surveillance.
 fn close_gracefully(process: &'static str) {
     std::thread::spawn(move || {
         let mut system = System::new().expect("sysinfo");
         // Le catalogue peut donner plusieurs noms possibles : on ferme ceux qui tournent vraiment.
-        let images: Vec<String> = Snapshot::scan(&mut system)
-            .matching_names(process)
-            .into_iter()
-            .map(|name| format!("{name}.exe"))
-            .collect();
-        for image in &images {
-            let _ = Command::new("taskkill").args(["/IM", image]).output();
+        let pids = detect::pids_matching(&mut system, process);
+        if pids.is_empty() {
+            return;
         }
-        for _ in 0..10 {
-            std::thread::sleep(Duration::from_millis(500));
-            if !Snapshot::scan(&mut system).is_running(process) {
-                return;
+        if winproc::request_close(&pids) > 0 {
+            for _ in 0..10 {
+                std::thread::sleep(Duration::from_millis(500));
+                if detect::pids_matching(&mut system, process).is_empty() {
+                    return;
+                }
             }
         }
-        for image in &images {
-            let _ = Command::new("taskkill").args(["/F", "/IM", image]).output();
-        }
+        // Seulement ceux qu'on voulait fermer et qui tournent encore (pas un homonyme relancé depuis).
+        let remaining: Vec<u32> = detect::pids_matching(&mut system, process)
+            .into_iter()
+            .filter(|pid| pids.contains(pid))
+            .collect();
+        winproc::terminate(&remaining);
     });
 }
 

@@ -10,6 +10,7 @@ mod i18n;
 mod icons;
 mod tray;
 mod updater;
+mod winproc;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

@@ -20,17 +20,9 @@ pub fn expand(template: &str) -> PathBuf {
 /// Bibliothèques Steam (dossiers `steamapps`).
 pub fn steam_libraries() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
-    // Chemin Steam depuis le registre (via reg.exe, sans dépendance supplémentaire).
-    if let Ok(output) = std::process::Command::new("reg")
-        .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
-        .output()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
-        if let Some(line) = text.lines().find(|l| l.contains("SteamPath")) {
-            if let Some(value) = line.split("REG_SZ").nth(1) {
-                roots.push(PathBuf::from(value.trim()));
-            }
-        }
+    // Chemin Steam lu directement dans le registre (pas de reg.exe : il ouvrait une console).
+    if let Some(path) = steam_path_from_registry() {
+        roots.push(path);
     }
     roots.push(expand("%PROGRAMFILES(X86)%\\Steam"));
 
@@ -53,6 +45,59 @@ pub fn steam_libraries() -> Vec<PathBuf> {
     libraries.dedup();
     libraries.retain(|p| p.exists());
     libraries
+}
+
+/// `HKCU\Software\Valve\Steam\SteamPath`, lu par l'API du registre.
+fn steam_path_from_registry() -> Option<PathBuf> {
+    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
+    let wide = |text: &str| text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    let (key, value) = (wide("Software\\Valve\\Steam"), wide("SteamPath"));
+    let mut size = 0u32;
+    unsafe {
+        let probe = RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut size,
+        );
+        if probe != ERROR_SUCCESS || size == 0 {
+            return None;
+        }
+        let mut buffer = vec![0u16; size as usize / 2 + 1];
+        let status = RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut size,
+        );
+        if status != ERROR_SUCCESS {
+            return None;
+        }
+        let text = String::from_utf16_lossy(&buffer[..(size as usize / 2).min(buffer.len())]);
+        let text = text.trim_end_matches('\0').trim();
+        (!text.is_empty()).then(|| PathBuf::from(text))
+    }
+}
+
+/// Identifiants des processus dont le nom correspond à `process` (un ou plusieurs noms `|`).
+pub fn pids_matching(system: &mut System, process: &str) -> Vec<u32> {
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    system
+        .processes()
+        .iter()
+        .filter(|(_, p)| {
+            let name = p.name().to_string_lossy().to_lowercase();
+            catalog::process_matches(process, name.strip_suffix(".exe").unwrap_or(&name))
+        })
+        .map(|(pid, _)| pid.as_u32())
+        .collect()
 }
 
 /// Photographie des processus en cours : nom en minuscules -> chemin de l'exécutable.
@@ -92,6 +137,7 @@ impl Snapshot {
     }
 
     /// Noms réels (minuscules, sans `.exe`) des processus qui correspondent à `process`.
+    #[cfg(test)]
     pub fn matching_names(&self, process: &str) -> Vec<String> {
         self.processes
             .keys()
