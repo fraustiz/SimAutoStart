@@ -75,6 +75,8 @@ The first build downloads the Windows App SDK runtime from NuGet (about 165 MB, 
 
 ## Known limitations
 
+- **Apps that require administrator rights** (SimHub does) cannot be closed by SimAutoStart when it runs without those rights: Windows does not let a normal process close an elevated one. They are still started, but may stay open after the game stops. Close them yourself, or run SimAutoStart as administrator (not tested).
+- **Garage 61** is recognised through its versioned agent (`garage61-agent-<date>-<hash>.exe`): `garage61-launcher.exe` only starts it and exits.
 - **Updates are not signed.** The executable is unsigned, and the SHA-256 comes from the same GitHub release as the zip: it protects against a corrupted download, not against a compromised GitHub account. Downloads are limited to this repository's release files, over HTTPS. Updating relies on `curl.exe` and `tar.exe`, which ship with Windows 10 (1803 and later) and Windows 11.
 - The app refuses to update a development build (one running from `target\debug` or `target\release`).
 - `windows-reactor` is a preview crate (0.100). The tray icon, close interception and file picker are implemented with plain Win32 and PowerShell because the crate doesn't offer them yet.
