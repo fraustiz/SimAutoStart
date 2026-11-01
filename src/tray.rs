@@ -58,10 +58,24 @@ pub fn show_main_window() {
     }
 }
 
+/// Nom du mutex d'instance unique : propre au dossier de données (`%LOCALAPPDATA%`), car deux
+/// instances qui n'ont pas la même configuration n'ont aucune raison de s'exclure (c'est ce qui
+/// permet de tester l'appli à côté d'une instance réelle sans la déranger).
+fn instance_name() -> String {
+    let base = std::env::var("LOCALAPPDATA").unwrap_or_default().to_lowercase();
+    // Empreinte FNV-1a 64 bits : un nom court et stable, sans dépendance.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in base.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("Local\\SimAutoStart.SingleInstance.{hash:016x}")
+}
+
 /// Garantit une seule instance. Si une autre tourne déjà (souvent cachée dans la zone de
 /// notification), on la réaffiche et on renvoie `false` : l'appelant doit quitter.
 pub fn ensure_single_instance() -> bool {
-    let name = wide("Local\\SimAutoStart.SingleInstance");
+    let name = wide(&instance_name());
     unsafe {
         let mutex = CreateMutexW(null(), 0, name.as_ptr());
         if mutex.is_null() || GetLastError() != ERROR_ALREADY_EXISTS {

@@ -44,7 +44,7 @@ pub fn add(config: &mut Config, is_sim: bool, exe: &Path) -> Option<String> {
     } else {
         catalog::companions()
             .into_iter()
-            .find(|c| catalog::process_matches(catalog::process_of(c), &stem))
+            .find(|c| catalog::process_matches_exact(catalog::process_of(c), &stem))
             .map(|c| c.id)
     };
     if let Some(id) = known {
@@ -82,7 +82,7 @@ pub fn locate(config: &mut Config, id: &str, exe: &Path) {
     config
         .known_paths
         .insert(id.to_string(), exe.to_string_lossy().to_string());
-    if catalog::process_matches(companion.process, &stem) {
+    if catalog::process_matches_exact(companion.process, &stem) {
         config.process_overrides.remove(id);
         catalog::clear_process_override(id);
     } else {

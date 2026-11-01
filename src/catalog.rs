@@ -146,7 +146,10 @@ pub const COMPANIONS: &[Companion] = &[
     Companion {
         id: "garage61",
         name: "Garage 61",
-        process: "garage61-launcher",
+        // `garage61-launcher` n'est qu'un amorceur : il démarre l'agent versionné
+        // `garage61-agent-<date>-<hash>` (dont le nom change à chaque mise à jour) puis se termine.
+        // C'est l'agent qui reste ouvert, donc c'est lui qu'il faut reconnaître (et fermer).
+        process: "garage61-launcher|garage61-agent*",
         paths: &["%APPDATA%\\garage61-install\\garage61-launcher.exe"],
         only_for: &["iracing"],
     },
@@ -317,10 +320,28 @@ pub fn normalize(name: &str) -> String {
 }
 
 /// `spec` est un nom de processus ou plusieurs séparés par `|` ; la comparaison ignore la casse,
-/// les espaces, les tirets et l'extension déjà retirée.
+/// les espaces, les tirets et l'extension déjà retirée. Une alternative qui finit par `*` est un
+/// **préfixe** (`garage61-agent*` reconnaît `garage61-agent-20261008125121-34ed9ae`), utile quand
+/// le programme qui reste ouvert porte un nom versionné qui change à chaque mise à jour.
 pub fn process_matches(spec: &str, name: &str) -> bool {
     let name = normalize(name);
-    spec.split('|').any(|alt| normalize(alt) == name)
+    spec.split('|').any(|alt| match alt.trim().strip_suffix('*') {
+        Some(prefix) => {
+            let prefix = normalize(prefix);
+            !prefix.is_empty() && name.starts_with(&prefix)
+        }
+        None => normalize(alt) == name,
+    })
+}
+
+/// Comme `process_matches`, mais sans les alternatives à préfixe. À utiliser pour *déduire un
+/// chemin* depuis un nom d'exécutable : le chemin d'un exécutable versionné serait périmé à la
+/// prochaine mise à jour du programme.
+pub fn process_matches_exact(spec: &str, name: &str) -> bool {
+    let name = normalize(name);
+    spec.split('|')
+        .filter(|alt| !alt.trim().ends_with('*'))
+        .any(|alt| normalize(alt) == name)
 }
 
 /// Les identifiants des entrées personnalisées commencent par `custom-`.
@@ -387,5 +408,41 @@ pub fn unregister(id: &str) {
 impl Companion {
     pub fn applies_to(&self, sim_id: &str) -> bool {
         self.only_for.is_empty() || self.only_for.contains(&sim_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_are_compared_loosely() {
+        assert!(process_matches("Track Titan", "track-titan"));
+        assert!(process_matches("a|SimHubWPF", "simhubwpf"));
+        assert!(!process_matches("simhub", "simhubwpf"), "pas de correspondance partielle sans joker");
+    }
+
+    #[test]
+    fn a_trailing_star_matches_a_prefix() {
+        let spec = "garage61-launcher|garage61-agent*";
+        assert!(process_matches(spec, "garage61-agent-20261008125121-34ed9ae"));
+        assert!(process_matches(spec, "garage61-agent-20241011144431-df8bdfd2a"), "ancienne version");
+        assert!(process_matches(spec, "garage61-launcher"));
+        assert!(!process_matches(spec, "garage61"), "le préfixe doit être complet");
+        assert!(!process_matches(spec, "my-garage61-agent"), "c'est un préfixe, pas un « contient »");
+        assert!(!process_matches("*", "nimportequoi"), "un joker seul ne doit rien reconnaître");
+    }
+
+    #[test]
+    fn exact_matching_ignores_prefix_alternatives() {
+        let spec = "garage61-launcher|garage61-agent*";
+        assert!(process_matches_exact(spec, "garage61-launcher"));
+        assert!(!process_matches_exact(spec, "garage61-agent-20261008125121-34ed9ae"));
+    }
+
+    #[test]
+    fn garage61_is_recognised_through_its_versioned_agent() {
+        let garage61 = companion("garage61").expect("Garage 61 est au catalogue");
+        assert!(process_matches(garage61.process, "garage61-agent-20261008125121-34ed9ae"));
     }
 }

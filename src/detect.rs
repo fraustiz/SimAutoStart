@@ -81,10 +81,12 @@ impl Snapshot {
             .any(|name| catalog::process_matches(process, name))
     }
 
+    /// Chemin de l'exécutable d'un processus **exactement** nommé dans `process` (les alternatives
+    /// à préfixe sont ignorées : le chemin d'un exécutable versionné serait vite périmé).
     pub fn exe_of(&self, process: &str) -> Option<&PathBuf> {
         self.processes
             .iter()
-            .find(|(name, _)| catalog::process_matches(process, name))?
+            .find(|(name, _)| catalog::process_matches_exact(process, name))?
             .1
             .as_ref()
     }
@@ -299,7 +301,7 @@ pub fn import_tolaunch(config: &mut Config) -> usize {
             };
             let id = catalog::companions()
                 .into_iter()
-                .find(|c| catalog::process_matches(catalog::process_of(c), &stem))
+                .find(|c| catalog::process_matches_exact(catalog::process_of(c), &stem))
                 .map(|c| c.id)
                 .or_else(|| {
                     catalog::sims()
@@ -328,4 +330,43 @@ pub fn companions_for(sim_id: &str) -> impl Iterator<Item = &'static Companion> 
 #[allow(dead_code)]
 pub fn sim_by_id(id: &str) -> Option<&'static Sim> {
     catalog::sim(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot(entries: &[(&str, &str)]) -> Snapshot {
+        Snapshot {
+            processes: entries
+                .iter()
+                .map(|(name, exe)| (name.to_string(), Some(PathBuf::from(exe))))
+                .collect(),
+        }
+    }
+
+    const SPEC: &str = "garage61-launcher|garage61-agent*";
+
+    #[test]
+    fn versioned_agent_counts_as_running_and_is_the_one_to_close() {
+        let snap = snapshot(&[
+            ("garage61-agent-20261008125121-34ed9ae", "C:\\x\\garage61-agent-20261008125121-34ed9ae.exe"),
+            ("explorer", "C:\\Windows\\explorer.exe"),
+        ]);
+        assert!(snap.is_running(SPEC), "l'agent versionné doit compter comme « en cours »");
+        assert_eq!(snap.matching_names(SPEC), vec!["garage61-agent-20261008125121-34ed9ae".to_string()]);
+        assert!(!snapshot(&[("explorer", "C:\\Windows\\explorer.exe")]).is_running(SPEC));
+    }
+
+    #[test]
+    fn the_path_of_a_versioned_agent_is_never_learned() {
+        let only_agent = snapshot(&[("garage61-agent-20261008125121-34ed9ae", "C:\\a\\agent.exe")]);
+        assert_eq!(only_agent.exe_of(SPEC), None, "chemin versionné : à ne pas retenir");
+
+        let with_launcher = snapshot(&[
+            ("garage61-agent-20261008125121-34ed9ae", "C:\\a\\agent.exe"),
+            ("garage61-launcher", "C:\\install\\garage61-launcher.exe"),
+        ]);
+        assert_eq!(with_launcher.exe_of(SPEC), Some(&PathBuf::from("C:\\install\\garage61-launcher.exe")));
+    }
 }
