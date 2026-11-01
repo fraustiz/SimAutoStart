@@ -1,6 +1,6 @@
-[package]
+﻿[package]
 name = "simautostart"
-version = "0.1.0-beta.3"
+version = "0.1.0-beta.4"
 edition = "2021"
 description = "Detects sim racing games and launches the companion apps you choose when a game starts"
 license = "MIT"
